@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# apple-touchbar-handover — hand the T1 Touch Bar HID interface to apple-ibridge.
+#
+# The problem this solves
+# -----------------------
+# The iBridge exposes the Touch Bar over two USB HID interfaces. Generic drivers
+# claim both at boot, and hid-sensor-hub keeps the second one:
+#
+#   0003:05AC:8600.0001    83 bytes   boot keyboard  -> apple-ibridge claims it
+#   0003:05AC:8600.0002   634 bytes   the Touch Bar  -> hid-sensor-hub KEEPS it
+#
+# apple-ibridge reclaims .0001 on load but not .0002, so appletb_probe() finds
+# nothing and the strip stays dark. The tell is the absence of the writable
+# sysfs controls (fnmode / idle_timeout / dim_timeout); lsmod looks correct and
+# dmesg shows no error, which is why this failure is so hard to spot.
+#
+# 634 bytes is the exact size appleib_report_fixup() tests for, so it is a
+# reliable identifier. Never match on anything else.
+
+set -euo pipefail
+
+WAIT_SECS="${WAIT_SECS:-30}"
+VIDPID="05AC:8600"
+TB_RDESC_SIZE=634
+
+# Wait for the iBridge HID devices to exist before doing anything.
+deadline=$(( SECONDS + WAIT_SECS ))
+while (( SECONDS < deadline )); do
+  set -- /sys/bus/hid/devices/0003:${VIDPID}.*
+  [[ -e $1 ]] && break
+  sleep 1
+done
+
+if [[ ! -e /sys/bus/hid/devices/0003:${VIDPID}.0001 ]]; then
+  echo "no 0003:${VIDPID} HID devices after ${WAIT_SECS}s; T1 not ready?" >&2
+  exit 1
+fi
+
+# Modules are loaded by /etc/modules-load.d/apple-touchbar.conf; make sure.
+modprobe apple-ibridge 2>/dev/null || true
+sleep 1
+
+changed=0
+for h in /sys/bus/hid/devices/0003:${VIDPID}.*; do
+  [[ -d $h ]] || continue
+  dev="$(basename "$h")"
+  sz="$(wc -c < "$h/report_descriptor" 2>/dev/null || echo 0)"
+  drv="$(basename "$(readlink -f "$h/driver" 2>/dev/null)" 2>/dev/null || echo none)"
+
+  [[ $sz == "$TB_RDESC_SIZE" ]] || continue
+
+  if [[ $drv == apple-ibridge-hid ]]; then
+    echo "$dev already on apple-ibridge-hid"
+    continue
+  fi
+
+  echo "$dev ($sz bytes) held by '$drv' — rebinding to apple-ibridge-hid"
+  printf '%s' "$dev" > /sys/bus/hid/drivers/hid-sensor-hub/unbind 2>/dev/null || true
+  printf '%s' "$dev" > /sys/bus/hid/drivers/hid-generic/unbind    2>/dev/null || true
+  sleep 1
+
+  if [[ -e /sys/bus/hid/drivers/apple-ibridge-hid/bind ]]; then
+    printf '%s' "$dev" > /sys/bus/hid/drivers/apple-ibridge-hid/bind \
+      && echo "$dev -> apple-ibridge-hid"
+    changed=1
+  else
+    echo "apple-ibridge-hid not registered yet; will be picked up on next load" >&2
+  fi
+done
+
+(( changed )) || echo "nothing to do"
+
+# Final confirmation: these attrs only exist once appletb_probe() has run.
+tb=""
+for h in /sys/bus/hid/devices/0003:${VIDPID}.*; do
+  [[ -e $h/fnmode ]] && tb="$h"
+done
+if [[ -n $tb ]]; then
+  echo "touch bar ready: fnmode=$(cat "$tb/fnmode") idle_timeout=$(cat "$tb/idle_timeout")"
+else
+  echo "WARNING: no fnmode attribute — appletb_probe() did not run" >&2
+  exit 1
+fi

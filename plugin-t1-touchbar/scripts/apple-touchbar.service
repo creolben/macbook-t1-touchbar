@@ -1,0 +1,18 @@
+[Unit]
+Description=Apple T1 Touch Bar interface handover (apple-ib-tb)
+Documentation=https://github.com/roadrunner2/macbook12-spi-driver
+# Needs the iBridge HID devices to have enumerated and apple-ibridge loaded.
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/apple-touchbar-handover
+# The handover only touches two sysfs files; if it fails, the strip is dark
+# but nothing else is harmed, so don't take the boot down with it.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=graphical.target

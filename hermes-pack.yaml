@@ -1,0 +1,12 @@
+name: t1-touchbar-pack
+description: Apple T1 (iBridge) Touch Bar support for Linux MacBook Pro
+author: creolben
+version: 1.0.0
+# Packs pin exact 40-character commit SHAs. Replace <SHA> with the commit you
+# want to distribute, then anyone can install the whole set with:
+#   hermes plugins pack show ./hermes-pack.yaml
+#   hermes plugins pack install ./hermes-pack.yaml
+plugins:
+  - repo: <owner>/macbook-t1-touchbar
+    ref: <SHA>
+    subdir: plugin-t1-touchbar

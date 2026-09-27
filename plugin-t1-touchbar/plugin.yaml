@@ -1,0 +1,11 @@
+name: t1-touchbar
+version: 1.0.0
+description: "Apple T1 (iBridge) Touch Bar on Linux — diagnose the T1 firmware state, rebuild the out-of-tree apple-ibridge/apple-ib-tb/apple-ib-als modules against the running kernel (patching the API drift automatically), and install them via DKMS with the boot-time HID interface handover. For MacBookPro13,x / MacBookPro14,x (2016-2017 Touch Bar MacBook Pros). Ships the diagnostic skill."
+author: creolben, Hermes Agent
+kind: backend
+provides_tools:
+  - t1_touchbar_status
+  - t1_touchbar_build
+  - t1_touchbar_install
+provides_skills:
+  - macbook-t1-touchbar-linux

@@ -1,0 +1,67 @@
+@@ -422,7 +422,7 @@
+ 	return appleib_forward_int_op(hdev, appleib_hid_event_fwd, &args);
+ }
+ 
+-static __u8 *appleib_report_fixup(struct hid_device *hdev, __u8 *rdesc,
++static const __u8 *appleib_report_fixup(struct hid_device *hdev, __u8 *rdesc,
+ 				  unsigned int *rsize)
+ {
+ 	/* Some fields have a size of 64 bits, which according to HID 1.11
+@@ -898,7 +898,6 @@
+ static struct acpi_driver appleib_driver = {
+ 	.name		= "apple-ibridge",
+ 	.class		= "topcase", /* ? */
+-	.owner		= THIS_MODULE,
+ 	.ids		= appleib_acpi_match,
+ 	.ops		= {
+ 		.add		= appleib_probe,
+@@ -1259,7 +1259,7 @@
+ 	return rc;
+ }
+ 
+-static int appletb_platform_remove(struct platform_device *pdev)
++static void appletb_platform_remove(struct platform_device *pdev)
+ {
+ 	struct appleib_device_data *ddata = pdev->dev.platform_data;
+ 	struct appleib_device *ib_dev = ddata->ib_dev;
+@@ -1268,14 +1268,9 @@
+ 
+ 	rc = appleib_unregister_hid_driver(ib_dev, &appletb_hid_driver);
+ 	if (rc)
+-		goto error;
++		return;
+ 
+ 	appletb_free_device(tb_dev);
+-
+-	return 0;
+-
+-error:
+-	return rc;
+ }
+ 
+ static const struct platform_device_id appletb_platform_ids[] = {
+@@ -645,7 +645,7 @@
+ 	return rc;
+ }
+ 
+-static int appleals_platform_remove(struct platform_device *pdev)
++static void appleals_platform_remove(struct platform_device *pdev)
+ {
+ 	struct appleib_device_data *ddata = pdev->dev.platform_data;
+ 	struct appleib_device *ib_dev = ddata->ib_dev;
+@@ -654,14 +654,9 @@
+ 
+ 	rc = appleib_unregister_hid_driver(ib_dev, &appleals_hid_driver);
+ 	if (rc)
+-		goto error;
++		return;
+ 
+ 	kfree(als_dev);
+-
+-	return 0;
+-
+-error:
+-	return rc;
+ }
+ 
+ static const struct platform_device_id appleals_platform_ids[] = {
