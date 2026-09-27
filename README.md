@@ -143,12 +143,57 @@ MacBookPro14,3 · Omarchy/Arch · kernel 7.2.5-4 · Limine · LUKS+btrfs.
 Expected to apply to any T1 model. If you run it on different hardware, please
 report what happened.
 
-## Not possible: Touch ID
+## Superseded for Touch Bar and Touch ID: t1bridge
 
-No Linux driver exists for the T1 or T2 Touch ID sensor, and none is in
-progress — it is wired to the Secure Enclave and speaks an encrypted,
-Apple-signed protocol. True with or without firmware. The webcam, by contrast,
-works with no driver at all once the firmware is present.
+**If you are starting fresh, look at [t1bridge](https://github.com/standardagents/t1bridge)
+first.** It is the maintained T1 stack and it covers more than this project does.
+
+| | This toolkit | t1bridge |
+|---|---|---|
+| Touch Bar | ✅ | ✅ (own renderer, customisable) |
+| FaceTime camera | ✅ free with firmware | ✅ packaged UVC driver |
+| Touch ID | ❌ | ✅ via `fprintd` |
+| Ambient light sensor | ❌ (`hid-sensor-als` only) | 🔴 planned |
+| Suspend/resume | — | 🔴 not working on the tested machine |
+| Distribution | this repo | signed pacman repo from `linux.standardagents.ai` |
+| Needs preserved `FDRData` | no | **yes, for Touch ID** |
+
+**They conflict.** t1bridge's tooling refuses to run while the pre-t1bridge
+out-of-tree drivers (`apple_ibridge`, `apple_ib_tb`, `apple_ib_als`) are
+present: they bind the T1's HID interfaces and their udev rules pin its USB
+configuration, and a run started with them loaded has been reported to wedge
+partway through with `result=error code=5`. Disable this stack before migrating:
+
+```bash
+sudo systemctl disable --now apple-touchbar.service
+sudo rm -f /etc/modules-load.d/apple-touchbar.conf
+sudo rmmod apple_ib_tb apple_ib_als apple_ibridge
+sudo dkms remove -m appleibridge -v 0.1 --all
+sudo dkms remove -m macbook12-spi-driver -v 0+git.315 --all
+```
+
+`t1-touchbar.sh status` reports this conflict and prints the same steps.
+
+**Why this repo still exists.** It does three things t1bridge does not attempt:
+it works on a *stock kernel* with no third-party repository or signing key, it
+backs up and restores the ECID-bound firmware (a plain file copy, no Apple
+servers), and it documents the diagnosis in enough detail to be useful when
+something else breaks. It is the small, dependency-free path; t1bridge is the
+complete one.
+
+## Touch ID: what changed
+
+If you read an earlier version of this file, it said Touch ID was impossible on
+Linux. That was correct when the community write-ups were written and is no
+longer true — [t1bridge](https://github.com/standardagents/t1bridge) provides it
+through standard `fprintd` tooling, on the same `EFI/APPLE/EMBEDDEDOS/FDRData`
+this repo tells you to back up. It requires that preserved copy; a regenerated
+or foreign one will not do.
+
+Similarly, T1 firmware **can** now be regenerated from Linux without macOS, via
+[t1-revive](https://github.com/niconistal/t1-revive). Restoring this repo's
+backup is still faster and does not depend on Apple's signing service — but
+"only a macOS reinstall can fix it" is no longer the whole picture.
 
 ## Credits
 
@@ -159,6 +204,14 @@ community write-ups by
 [Dunedan/mbp-2016-linux](https://github.com/Dunedan/mbp-2016-linux),
 [cschaba/macbookpro14-3-linux](https://github.com/cschaba/macbookpro14-3-linux)
 and [nohzafk/omarchy-macbookpro-t1](https://github.com/nohzafk/omarchy-macbookpro-t1).
+
+Upstream paths that supersede parts of this work:
+[standardagents/t1bridge](https://github.com/standardagents/t1bridge) (Touch Bar,
+camera, Touch ID), [niconistal/t1-revive](https://github.com/niconistal/t1-revive)
+(firmware regeneration from Linux), and
+[omacom/omarchy-iso#174](https://github.com/omacom/omarchy-iso/pull/174) (stop the
+installer erasing `EFI/APPLE` in the first place). See
+[docs/upstream-status.md](docs/upstream-status.md).
 
 ## License
 
