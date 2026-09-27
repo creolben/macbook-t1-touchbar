@@ -7,14 +7,14 @@ Three separate audiences, three mechanisms. Pick by what you want to give away.
 Anyone with Hermes Agent:
 
 ```bash
-hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
+hermes plugins install creolben/macbook-t1-touchbar/plugin-t1-touchbar --force --no-enable
 hermes plugins enable t1-touchbar
 ```
 
 Or pinned to an exact revision (recommended — it cannot drift under them):
 
 ```bash
-hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar \
+hermes plugins install creolben/macbook-t1-touchbar/plugin-t1-touchbar \
   --ref <40-char-commit-sha>
 ```
 
@@ -118,7 +118,7 @@ After pushing, verify from a clean machine or a throwaway `HERMES_HOME`:
 
 ```bash
 # 1. installs and validates
-hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --ref 73c0c778e5932d575e42c99ee1f27c5e54bb1cc4 --force
+hermes plugins install creolben/macbook-t1-touchbar/plugin-t1-touchbar --ref 085cac6056c84f74ffee95415f9e35aa622033b4 --force
 hermes plugins doctor ~/.hermes/plugins/t1-touchbar
 
 # 2. registers all three tools
