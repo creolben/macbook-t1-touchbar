@@ -52,7 +52,40 @@ modinfo hid-appletb-bl  | grep '^alias'   # ...p00008102 -> T2 only
 The T1 Touch Bar is USB `05ac:8600`. Those T2 modules match `8302`/`8102` and
 will never bind here. Their presence in `/lib/modules` proves nothing.
 
+## Before you build anything: is this the right stack?
+
+**Check [t1bridge](https://github.com/standardagents/t1bridge) first.** It is the
+maintained T1 stack and covers more than this driver trio does:
+
+| | this stack | t1bridge |
+|---|---|---|
+| Touch Bar | yes | yes, own renderer |
+| Touch ID | no | yes, via `fprintd` |
+| Camera | free with firmware | packaged UVC driver |
+| Distribution | stock kernel | third-party signed pacman repo |
+
+This stack remains the right choice when the user wants no third-party
+repository or signing key, or already has it working. It is the small,
+dependency-free path. Say which one you are setting up before starting, because
+**they conflict** and the install order matters.
+
+The rest of this skill documents this stack. If t1bridge is the answer, install
+that instead and stop here — do not install both.
+
 ## Step 1 — check the firmware (do this first, always)
+
+**Back it up before anything else.** The three files below are personalised to
+this machine's ECID, cannot be downloaded, and no other Mac's copy will boot
+this chip. If the ESP is wiped, only a macOS reinstall regenerates them. A
+31 MB archive turns that into a file copy:
+
+```bash
+sudo ~/t1-touchbar/backup-t1-firmware.sh
+```
+
+Then copy the result **off the disk**. Verify it later with
+`sha256sum -c SHA256SUMS.txt` in the archive directory. Restore with
+`sudo ~/t1-touchbar/restore-t1-firmware.sh` (refuses to touch a healthy T1).
 
 The T1 has no firmware in ROM. macOS writes it to the ESP at
 `EFI/APPLE/EMBEDDEDOS/combined.memboot` (~30 MB, plus `FDRData`,
@@ -75,6 +108,15 @@ To fix `1281`: install macOS to a partition, boot it **with internet**, and let
 not licensing — no Apple ID sign-in or activation is involved. macOS writes the
 files to the **internal** ESP; writing to a different disk's ESP is the classic
 failure. Verify afterwards with `ls /boot/EFI/APPLE/EMBEDDEDOS/`.
+
+If a backup already exists, you do not need macOS at all — restore the archive
+and reboot. The firmware is loaded into the chip at power-on, so nothing takes
+effect until you reboot.
+
+### The interface is not re-enumerated without a reboot
+
+Restoring the files does not revive a running chip. Reboot, then confirm
+`05ac:8600` before touching the driver layer.
 
 The files are bound to this machine's **ECID** — worthless on another Mac,
 irreplaceable on this one. Back them up off-disk and never wipe the directory.
@@ -191,13 +233,39 @@ edit `/usr/share/omarchy/`; see the `omarchy` skill. Apply with
    iio_triggered_buffer_setup_ext` is module ordering, affects only the ambient
    light sensor (`hid-sensor-als` already covers it), and does not affect the
    Touch Bar. Blacklist it to silence the noise.
-9. **Expecting Touch ID to work.** No Linux driver exists for T1 or T2, and
-   none is coming — the sensor speaks a signed protocol to the Secure Enclave.
-   True with or without firmware.
+9. **Believing Touch ID is impossible.** Older guides — including earlier
+   versions of this skill — say no Linux driver exists. That is out of date:
+   t1bridge ships `libfprint-t1bridge` + `fprintd-t1bridge` and Touch ID works
+   through standard `fprintd-enroll` / `fprintd-verify`. It needs this machine's
+   preserved `EFI/APPLE/EMBEDDEDOS/FDRData`; a regenerated or foreign copy will
+   not do.
+14. **Running this stack and t1bridge together.** They conflict. t1bridge's
+    preflight refuses while `apple_ibridge` / `apple_ib_tb` / `apple_ib_als` are
+    present — they bind the T1 HID interfaces and pin its USB configuration, and
+    a run started with them loaded has been reported to wedge with
+    `result=error code=5`. Disable this stack first; see
+    docs/upstream-status.md in the toolkit.
+10. **Not backing up the firmware before repartitioning.** The most expensive
+    omission. 31 MB now, versus a macOS reinstall later. Back it up first and
+    keep it off the machine.
+11. **Assuming the ESP is at `/boot/efi`.** On Omarchy it is at `/boot`.
+    Resolve it with `findmnt -no SOURCE,FSTYPE /boot` rather than hardcoding.
+12. **Trying to source the firmware from elsewhere.** It is not downloadable.
+    `combined.memboot` is assembled on-machine and signed for this chip's ECID;
+    a donor copy fails signature validation. It *can* be regenerated from Linux
+    without macOS, via [t1-revive](https://github.com/niconistal/t1-revive)
+    (released, verified on all four T1 models) — but that needs a network path
+    to Apple and only works while Apple still signs this firmware. A local
+    backup is faster, offline, and does not depend on Apple's signing policy.
+13. **Running ACPI `SOCW(1)` as a T1 reset.** It can hard-freeze these
+    machines. The only reset observed to work is `FRST`.
 
 ## Verification
 
 ```bash
+# 0. firmware archived and verified (do this first)
+ls -la ~/t1-firmware-backup/ && (cd ~/t1-firmware-backup && sha256sum -c SHA256SUMS.txt)
+
 # 1. iBridge healthy (want 05ac:8600)
 for d in /sys/bus/usb/devices/*/; do
   [ "$(cat $d/idVendor 2>/dev/null)" = 05ac ] && echo "05ac:$(cat $d/idProduct)"
