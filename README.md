@@ -76,6 +76,7 @@ Everything goes through one entry point:
 
 ```bash
 ./t1-touchbar.sh status            # read-only diagnosis, in dependency order
+./t1-touchbar.sh audit-boot        # verify the boot wiring before rebooting
 sudo ./t1-touchbar.sh backup-firmware
 sudo ./t1-touchbar.sh restore-firmware
 ./t1-touchbar.sh build             # patch + compile the modules (no root)

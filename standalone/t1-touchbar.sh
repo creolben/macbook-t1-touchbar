@@ -5,6 +5,7 @@
 #
 # Commands:
 #   status            read-only diagnosis; changes nothing
+#   audit-boot        will the stack come up by itself after a reboot?
 #   backup-firmware   archive the T1 firmware from the ESP  <-- run this first
 #   restore-firmware  put an archived firmware set back on the ESP
 #   build             patch + compile the three kernel modules
@@ -45,6 +46,12 @@ case "$cmd" in
     exec "$HERE/build-t1-modules.sh" "$@"
     ;;
 
+  audit-boot)
+    # Reads systemd state and journal; the ESP checks want root but it degrades
+    # to a clear "cannot confirm" rather than a false negative.
+    exec "$HERE/t1-boot-audit.sh" "$@"
+    ;;
+
   install)
     need_root
     exec "$HERE/install-t1-touchbar.sh" "$@"
@@ -56,7 +63,7 @@ case "$cmd" in
     ;;
 
   help|-h|--help|"")
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
     echo
     echo "Scripts in this directory:"
     for f in "$HERE"/*.sh "$HERE"/apple-touchbar-handover; do
