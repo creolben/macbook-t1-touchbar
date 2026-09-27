@@ -46,7 +46,7 @@ compiles into a temp directory.
 ## Install as a Hermes plugin
 
 ```bash
-hermes plugins install <owner>/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
+hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
 hermes plugins enable t1-touchbar
 ```
 

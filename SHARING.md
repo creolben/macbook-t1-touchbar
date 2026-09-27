@@ -7,14 +7,14 @@ Three separate audiences, three mechanisms. Pick by what you want to give away.
 Anyone with Hermes Agent:
 
 ```bash
-hermes plugins install <owner>/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
+hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
 hermes plugins enable t1-touchbar
 ```
 
 Or pinned to an exact revision (recommended — it cannot drift under them):
 
 ```bash
-hermes plugins install <owner>/macbook-t1-touchbar#plugin-t1-touchbar \
+hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar \
   --ref <40-char-commit-sha>
 ```
 
@@ -48,10 +48,10 @@ adding an entry:
   "description": "Apple T1 (iBridge) Touch Bar support for Linux MacBook Pro.",
   "author": "creolben",
   "tags": ["macbook", "touchbar", "t1", "ibridge", "apple", "dkms"],
-  "repo": "<owner>/macbook-t1-touchbar",
+  "repo": "creolben/macbook-t1-touchbar",
   "ref": "<40-char commit SHA>",
   "subdir": "plugin-t1-touchbar",
-  "homepage": "https://github.com/<owner>/macbook-t1-touchbar",
+  "homepage": "https://github.com/creolben/macbook-t1-touchbar",
   "capabilities": ["tools"],
   "api_version": 1,
   "added_at": "2026-09-27"
@@ -68,7 +68,7 @@ after your first push:
 
 ```yaml
 plugins:
-  - repo: <owner>/macbook-t1-touchbar
+  - repo: creolben/macbook-t1-touchbar
     ref: <40-char-commit-sha>
     subdir: plugin-t1-touchbar
 ```
@@ -88,7 +88,7 @@ audio) into one "my MacBook setup" pack.
 `standalone/` needs no Hermes at all:
 
 ```bash
-git clone https://github.com/<owner>/macbook-t1-touchbar
+git clone https://github.com/creolben/macbook-t1-touchbar
 cd macbook-t1-touchbar/standalone
 sudo ./bootstrap-t1-touchbar.sh
 ```
@@ -109,7 +109,7 @@ hermes skills publish plugin-t1-touchbar/skills/macbook-t1-touchbar-linux --to g
 Or add the repo as a tap so its skills are discoverable:
 
 ```bash
-hermes skills tap add <owner>/macbook-t1-touchbar
+hermes skills tap add creolben/macbook-t1-touchbar
 ```
 
 ## What "done" looks like
@@ -118,7 +118,7 @@ After pushing, verify from a clean machine or a throwaway `HERMES_HOME`:
 
 ```bash
 # 1. installs and validates
-hermes plugins install <owner>/macbook-t1-touchbar#plugin-t1-touchbar --ref <sha> --force
+hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --ref <sha> --force
 hermes plugins doctor ~/.hermes/plugins/t1-touchbar
 
 # 2. registers all three tools

@@ -7,6 +7,6 @@ version: 1.0.0
 #   hermes plugins pack show ./hermes-pack.yaml
 #   hermes plugins pack install ./hermes-pack.yaml
 plugins:
-  - repo: <owner>/macbook-t1-touchbar
+  - repo: creolben/macbook-t1-touchbar
     ref: <SHA>
     subdir: plugin-t1-touchbar
