@@ -564,6 +564,89 @@ def do_restore_firmware(backup_dir: str | None = None, force: bool = False) -> d
     return result
 
 
+def _physical_disk(dev: str) -> str:
+    """Resolve a device to the physical disk backing it.
+
+    `lsblk -no PKNAME` stops at the first layer, which is not enough here: this
+    machine's root is /dev/mapper/root on top of a LUKS partition on the NVMe
+    device, and PKNAME on the mapper returns nothing at all. Walk up with
+    `lsblk -s` (dependencies, innermost last) and take the last real disk.
+    """
+    if not shutil.which("lsblk"):
+        return Path(dev).name
+    r = _run(["lsblk", "-sno", "NAME,TYPE", dev], timeout=30)
+    lines = [ln.split() for ln in (r.stdout or "").splitlines() if ln.split()]
+    for name, typ in reversed(lines):          # innermost/last is the parent disk
+        if typ == "disk":
+            # lsblk tree output prefixes the name with box-drawing characters
+            # when the device has children; strip them for a clean comparison.
+            return name.lstrip("─└├│ ")
+    # Fall back to the topmost name if no TYPE=disk line was found.
+    return lines[-1][0].lstrip("─└├│ ") if lines else Path(dev).name
+
+
+def _backup_shares_disk_with_esp(backups: list[dict[str, Any]]) -> bool:
+    """True when a backup and the ESP resolve to the same physical disk.
+
+    A copy in $HOME is a copy on a different *partition* of the same device on
+    a single-disk Mac, which is the common case. That survives a wiped
+    partition and nothing else — so it is worth saying plainly rather than
+    letting "backed up" read as "safe".
+    """
+    esp = esp_mount().get("source")
+    if not esp:
+        return False
+
+    esp_disk = _physical_disk(esp)
+    if not esp_disk:
+        return False
+
+    for b in backups:
+        path = b.get("path")
+        if not path:
+            continue
+        r = _run(["findmnt", "-no", "SOURCE", "-T", path], timeout=30)
+        # SOURCE can carry a btrfs subvolume suffix, e.g.
+        # "/dev/mapper/root[/@home]" — strip it before resolving.
+        src = (r.stdout or "").strip().split("[")[0]
+        if src and _physical_disk(src) == esp_disk:
+            return True
+    return False
+
+
+def legacy_stack_note() -> dict[str, Any]:
+    """Whether the pre-t1bridge T1 stack is installed here.
+
+    This matters beyond our own operation: t1bridge / t1-revive is the
+    maintained T1 stack (Touch Bar, camera, and Touch ID), and its preflight
+    refuses to run while the older out-of-tree drivers are present. They bind
+    the T1's HID interfaces and their udev rules pin its USB configuration, and
+    a run started with them loaded has been reported to wedge partway through
+    with `result=error code=5`.
+
+    So we do not just report our own state — we report that we are the thing
+    standing in the way, and how to stand down.
+    """
+    out: dict[str, Any] = {
+        "installed": False,
+        "modules_loaded": [],
+        "dkms": _read_dkms(),
+        "conflicts_with": "t1bridge / t1-revive",
+        "stand_down": [
+            "sudo systemctl disable --now apple-touchbar.service",
+            "sudo rm -f /etc/modules-load.d/apple-touchbar.conf",
+            "sudo rmmod apple_ib_tb apple_ib_als apple_ibridge 2>/dev/null || true",
+            "sudo dkms remove -m appleibridge -v 0.1 --all",
+            "sudo dkms remove -m macbook12-spi-driver -v 0+git.315 --all",
+        ],
+    }
+    for m in MODULES:
+        if _module_loaded(m):
+            out["modules_loaded"].append(m)
+    out["installed"] = bool(out["modules_loaded"]) or bool(out["dkms"].get("ours"))
+    return out
+
+
 def status_report() -> dict[str, Any]:
     """Read-only diagnosis. Needs no privilege, changes nothing."""
     cls = model_class()
@@ -576,6 +659,7 @@ def status_report() -> dict[str, Any]:
     on_disk = {m: _module_on_disk(m) for m in MODULES}
     dkms = _read_dkms()
     backups = firmware_backups()
+    legacy = legacy_stack_note()
     tb_iface = next((h for h in hid if h["is_touchbar_interface"]), None)
 
     if cls == "t2":
@@ -631,6 +715,20 @@ def status_report() -> dict[str, Any]:
                 " A firmware backup FAILED its checksum verification — treat it "
                 "as corrupt and take a fresh one."
             )
+        if legacy.get("installed"):
+            verdict += (
+                " HEADS UP: this is the pre-t1bridge driver stack. t1bridge is "
+                "the maintained alternative and adds Touch ID, but its preflight "
+                "refuses to run while these modules are present. Disable this "
+                "stack before running t1-revive; see legacy_stack.stand_down."
+            )
+        if backups and _backup_shares_disk_with_esp(backups):
+            verdict += (
+                " NOTE: the firmware backup is on the SAME physical disk as the "
+                "ESP, so it survives a wiped partition but not disk failure, "
+                "repartitioning, or losing the machine. Copy it to separate "
+                "hardware."
+            )
     elif tb_iface and tb_iface["driver"] != "apple-ibridge-hid":
         verdict = (
             f"The {TB_RDESC_SIZE}-byte Touch Bar interface is held by "
@@ -657,6 +755,7 @@ def status_report() -> dict[str, Any]:
         "firmware": fw,
         "esp": esp_mount(),
         "firmware_backups": backups,
+        "legacy_stack": legacy,
         "hid_interfaces": hid,
         "touchbar_controls_present": tb is not None,
         "touchbar_path": str(tb) if tb else None,
