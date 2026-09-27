@@ -11,31 +11,54 @@ Two ways to use it:
 
 | | |
 |---|---|
-| **`plugin-t1-touchbar/`** | A Hermes Agent plugin — three tools the agent can call, plus the diagnostic skill |
-| **`standalone/`** | Plain scripts — no Hermes required, one command to bootstrap |
+| **`plugin-t1-touchbar/`** | A Hermes Agent plugin — five tools the agent can call, plus the diagnostic skill |
+| **`standalone/`** | Plain scripts, no Hermes required; one entry point |
+
+## Start here: back up the firmware
+
+```bash
+sudo ./standalone/t1-touchbar.sh backup-firmware
+```
+
+Then copy the result **off the disk**. This is the one thing on a T1 Mac that
+cannot be regenerated: the firmware is personalised to your chip's ECID, cannot
+be downloaded, and no other Mac's copy will work. If the ESP is ever wiped, only
+a macOS reinstall brings it back — 31 MB now versus that.
+
+## The whole toolkit
+
+Everything goes through one entry point:
+
+```bash
+./t1-touchbar.sh status            # read-only diagnosis, in dependency order
+sudo ./t1-touchbar.sh backup-firmware
+sudo ./t1-touchbar.sh restore-firmware
+./t1-touchbar.sh build             # patch + compile the modules (no root)
+sudo ./t1-touchbar.sh install      # DKMS + boot load + handover
+sudo ./t1-touchbar.sh load         # manual load, for an already-installed system
+```
+
+`status` walks the layers in the order they must work — firmware → USB
+enumeration → HID interface ownership → driver probe → DKMS — and says what to
+do about each failure. `build` needs no privilege at all; it patches and
+compiles into a temp directory.
 
 ## Install as a Hermes plugin
 
 ```bash
-hermes plugins install <owner>/macbook-t1-touchbar/plugin-t1-touchbar
+hermes plugins install <owner>/macbook-t1-touchbar#plugin-t1-touchbar --force --no-enable
 hermes plugins enable t1-touchbar
 ```
 
-Or clone and copy:
-
-```bash
-git clone https://github.com/<owner>/macbook-t1-touchbar
-cp -r macbook-t1-touchbar/plugin-t1-touchbar ~/.hermes/plugins/t1-touchbar
-hermes plugins enable t1-touchbar
-```
-
-It registers three tools and needs no tool-override rights:
+Five tools, none requiring tool-override rights:
 
 | Tool | Privilege | Side effects |
 |---|---|---|
 | `t1_touchbar_status` | none | none — read-only diagnosis |
 | `t1_touchbar_build` | none | none — compiles to a temp dir |
 | `t1_touchbar_install` | required | DKMS + systemd + initramfs, needs `confirm=true` |
+| `t1_touchbar_backup_firmware` | required | writes an archive of the ESP firmware |
+| `t1_touchbar_restore_firmware` | required | writes to the ESP; refuses a healthy T1 |
 
 Plus the skill, loadable as `skill_view('t1-touchbar:macbook-t1-touchbar-linux')`.
 

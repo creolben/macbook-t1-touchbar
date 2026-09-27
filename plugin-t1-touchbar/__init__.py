@@ -78,6 +78,65 @@ _INSTALL_SCHEMA = {
 }
 
 
+_BACKUP_FW_SCHEMA = {
+    "name": "t1_touchbar_backup_firmware",
+    "description": (
+        "Archive the Apple T1 (iBridge) firmware from the ESP to a local "
+        "directory, verifying every file against the source and recording "
+        "SHA256 checksums. This is the single most important thing to do on a "
+        "T1 Mac: the firmware is personalised to this machine's ECID, cannot be "
+        "downloaded, and no other Mac's copy will work. If the ESP is ever "
+        "wiped, only a macOS reinstall regenerates it. Needs privilege (the ESP "
+        "is root-only). Refuses if there is nothing to archive, because a "
+        "missing EMBEDDEDOS directory means the firmware is already gone and "
+        "no backup can be taken."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "dest": {
+                "type": "string",
+                "description": (
+                    "Destination directory. Defaults to "
+                    "~/t1-firmware-backup. Remember the result must be copied "
+                    "off this disk to be useful."
+                ),
+            }
+        },
+        "required": [],
+    },
+}
+
+_RESTORE_FW_SCHEMA = {
+    "name": "t1_touchbar_restore_firmware",
+    "description": (
+        "Copy an archived T1 firmware set back to the ESP, for when an "
+        "installer has wiped EFI/APPLE and the T1 has dropped to 05ac:1281 "
+        "recovery mode. Writes atomically (stage, sync, rename) and verifies "
+        "afterwards. Refuses to touch a healthy T1 whose ESP already matches "
+        "the archive, and refuses a corrupt or incomplete archive. This "
+        "restores files you already have — it cannot regenerate firmware."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "backup_dir": {
+                "type": "string",
+                "description": "Archive directory. Defaults to ~/t1-firmware-backup.",
+            },
+            "force": {
+                "type": "boolean",
+                "description": (
+                    "Bypass the healthy-T1 guard. Only for the case where the T1 "
+                    "is up but the ESP copy is known to be wrong."
+                ),
+            },
+        },
+        "required": [],
+    },
+}
+
+
 def _handle_status(params, **kwargs):
     del params, kwargs
     try:
@@ -99,6 +158,30 @@ def _handle_install(params, **kwargs):
     try:
         confirm = bool(params.get("confirm"))
         result = t1.do_install(confirm)
+        return json.dumps(
+            {"success": bool(result.get("ok")), **result}, indent=1, default=str
+        )
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _handle_backup_firmware(params, **kwargs):
+    del kwargs
+    try:
+        result = t1.do_backup_firmware(params.get("dest"))
+        return json.dumps(
+            {"success": bool(result.get("ok")), **result}, indent=1, default=str
+        )
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+def _handle_restore_firmware(params, **kwargs):
+    del kwargs
+    try:
+        result = t1.do_restore_firmware(
+            params.get("backup_dir"), bool(params.get("force"))
+        )
         return json.dumps(
             {"success": bool(result.get("ok")), **result}, indent=1, default=str
         )
@@ -130,6 +213,22 @@ def register(ctx) -> None:
         handler=_handle_install,
         emoji="📦",
         description="Install the T1 Touch Bar driver stack via DKMS",
+    )
+    ctx.register_tool(
+        name="t1_touchbar_backup_firmware",
+        toolset="t1_touchbar",
+        schema=_BACKUP_FW_SCHEMA,
+        handler=_handle_backup_firmware,
+        emoji="💾",
+        description="Archive the T1 firmware from the ESP (do this first)",
+    )
+    ctx.register_tool(
+        name="t1_touchbar_restore_firmware",
+        toolset="t1_touchbar",
+        schema=_RESTORE_FW_SCHEMA,
+        handler=_handle_restore_firmware,
+        emoji="♻️",
+        description="Restore T1 firmware to the ESP after it was wiped",
     )
 
     # The bundled skill carries the diagnosis and the failure modes that are not

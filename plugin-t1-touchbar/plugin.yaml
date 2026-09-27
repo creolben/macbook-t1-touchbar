@@ -7,5 +7,7 @@ provides_tools:
   - t1_touchbar_status
   - t1_touchbar_build
   - t1_touchbar_install
+  - t1_touchbar_backup_firmware
+  - t1_touchbar_restore_firmware
 provides_skills:
   - macbook-t1-touchbar-linux

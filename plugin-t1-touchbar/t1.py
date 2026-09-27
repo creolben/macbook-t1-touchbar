@@ -135,7 +135,13 @@ def hid_interfaces() -> list[dict[str, Any]]:
 
 
 def touchbar_attr_path() -> Path | None:
-    """The interface carrying the Touch Bar controls, if a probe succeeded."""
+    """The interface carrying the Touch Bar driver's sysfs controls.
+
+    Note this is the 83-byte interface, NOT the 634-byte one. The driver's
+    fnmode/idle_timeout/dim_timeout attributes land on the boot-keyboard
+    interface, so looking for them on the 634-byte one always misses. Search
+    all iBridge HID devices.
+    """
     for d in sorted(Path("/sys/bus/hid/devices").glob("0003:05AC:8600.*")):
         if (d / "fnmode").exists():
             return d
@@ -171,6 +177,60 @@ def firmware_files() -> dict[str, Any]:
             except OSError:
                 out["files"][name] = None
     return out
+
+
+def esp_mount() -> dict[str, Any]:
+    """Where the EFI System Partition is mounted.
+
+    Do not assume /boot/efi. Plenty of installs (including Omarchy's) put the
+    ESP at /boot, and a script that hardcodes the wrong path silently does
+    nothing.
+    """
+    out: dict[str, Any] = {"path": None, "source": None}
+    if not shutil.which("findmnt"):
+        # Fall back to a plain check when findmnt is unavailable.
+        for cand in ("/boot/efi", "/boot", "/efi"):
+            if Path(cand).is_dir():
+                out["path"] = cand
+                break
+        return out
+    for cand in ("/boot/efi", "/boot", "/efi"):
+        r = _run(["findmnt", "-no", "FSTYPE", cand], timeout=30)
+        if r.returncode == 0 and "vfat" in (r.stdout or "").lower():
+            s = _run(["findmnt", "-no", "SOURCE", cand], timeout=30)
+            out["path"] = cand
+            out["source"] = (s.stdout or "").strip() or None
+            break
+    return out
+
+
+def firmware_backups() -> list[dict[str, Any]]:
+    """Any local T1 firmware archives, with integrity state."""
+    found = []
+    roots = []
+    for home in {str(Path.home()), os.path.expanduser("~")}:
+        roots.append(Path(home) / "t1-firmware-backup")
+    roots.append(Path("/var/lib/t1-touchbar"))
+
+    for d in roots:
+        if not d.is_dir():
+            continue
+        entry: dict[str, Any] = {"path": str(d), "complete": False, "verified": None}
+        sizes = {}
+        for name in ("combined.memboot", "FDRData", "version.plist"):
+            try:
+                sizes[name] = (d / name).stat().st_size
+            except OSError:
+                sizes[name] = None
+        entry["files"] = sizes
+        entry["complete"] = all(v for v in sizes.values())
+        # Verify against the recorded checksums when present.
+        sums = d / "SHA256SUMS.txt"
+        if sums.is_file() and shutil.which("sha256sum"):
+            r = _run(["sha256sum", "-c", "SHA256SUMS.txt"], cwd=d, timeout=180)
+            entry["verified"] = r.returncode == 0
+        found.append(entry)
+    return found
 
 
 def backlight() -> dict[str, Any]:
@@ -434,6 +494,76 @@ def _read_dkms() -> dict[str, Any]:
     return out
 
 
+def do_backup_firmware(dest: str | None = None) -> dict[str, Any]:
+    """Archive the T1 firmware from the ESP. Needs privilege (ESP is root-only)."""
+    script = PLUGIN_ROOT / "scripts" / "backup-t1-firmware.sh"
+    if not script.is_file():
+        return {"ok": False, "error": f"backup script missing at {script}"}
+
+    esp = esp_mount()
+    if not esp["path"]:
+        return {
+            "ok": False,
+            "error": "no vfat ESP mounted at /boot/efi, /boot or /efi — nothing to archive",
+        }
+
+    fw = firmware_files()
+    if fw.get("present") is False:
+        return {
+            "ok": False,
+            "error": (
+                "EFI/APPLE/EMBEDDEDOS does not exist, so there is nothing to "
+                "back up — the firmware is already absent. The T1 is almost "
+                "certainly at 05ac:1281. It must be re-provisioned by booting "
+                "macOS once with internet; this script archives firmware that "
+                "exists and cannot regenerate it."
+            ),
+        }
+
+    cmd = [str(script)]
+    if dest:
+        cmd.append(dest)
+    ok, out = run_privileged(cmd, timeout=600)
+    return {"ok": ok, "output": out, "privilege": root_mode()}
+
+
+def do_restore_firmware(backup_dir: str | None = None, force: bool = False) -> dict[str, Any]:
+    """Copy a firmware archive back to the ESP. Refuses unless the T1 needs it."""
+    script = PLUGIN_ROOT / "scripts" / "restore-t1-firmware.sh"
+    if not script.is_file():
+        return {"ok": False, "error": f"restore script missing at {script}"}
+
+    cmd = [str(script)]
+    if backup_dir:
+        cmd.append(backup_dir)
+
+    env_prefix_warning = None
+    if force:
+        env_prefix_warning = "FORCE=1 set; the healthy-T1 guard was bypassed"
+
+    mode = root_mode()
+    if mode == "already_root":
+        r = _run(cmd, timeout=600)
+        out, ok = (r.stdout or "") + (r.stderr or ""), r.returncode == 0
+    elif mode in ("escalation_available", "pkexec"):
+        runner = ["sudo", "-n"] if mode == "escalation_available" else ["pkexec"]
+        r = _run([*runner, *cmd], timeout=600)
+        out, ok = (r.stdout or "") + (r.stderr or ""), r.returncode == 0
+    else:
+        quoted = " ".join(shlex_quote(c) for c in cmd)
+        return {
+            "ok": False,
+            "error": (
+                "NOPRIV: privileged work is not available to this process. Run "
+                f"this yourself in a terminal:\n\n    sudo {quoted}"
+            ),
+        }
+    result = {"ok": ok, "output": out.strip()}
+    if env_prefix_warning:
+        result["warning"] = env_prefix_warning
+    return result
+
+
 def status_report() -> dict[str, Any]:
     """Read-only diagnosis. Needs no privilege, changes nothing."""
     cls = model_class()
@@ -445,6 +575,7 @@ def status_report() -> dict[str, Any]:
     loaded = {m: _module_loaded(m) for m in MODULES}
     on_disk = {m: _module_on_disk(m) for m in MODULES}
     dkms = _read_dkms()
+    backups = firmware_backups()
     tb_iface = next((h for h in hid if h["is_touchbar_interface"]), None)
 
     if cls == "t2":
@@ -482,6 +613,24 @@ def status_report() -> dict[str, Any]:
                 "next kernel update and whichever finishes last wins. Disable "
                 "the distro registration to make this deterministic."
             )
+        if not backups:
+            verdict += (
+                " NO FIRMWARE BACKUP FOUND. The T1 firmware on the ESP is "
+                "personalised to this machine's ECID, cannot be downloaded, and "
+                "no other Mac's copy will work. If the ESP is ever wiped, only a "
+                "macOS reinstall regenerates it. Archive it now with "
+                "t1_touchbar_backup_firmware."
+            )
+        elif not any(b.get("complete") for b in backups):
+            verdict += (
+                " A firmware backup directory exists but is INCOMPLETE. Re-run "
+                "t1_touchbar_backup_firmware to rebuild it."
+            )
+        elif any(b.get("verified") is False for b in backups):
+            verdict += (
+                " A firmware backup FAILED its checksum verification — treat it "
+                "as corrupt and take a fresh one."
+            )
     elif tb_iface and tb_iface["driver"] != "apple-ibridge-hid":
         verdict = (
             f"The {TB_RDESC_SIZE}-byte Touch Bar interface is held by "
@@ -506,6 +655,8 @@ def status_report() -> dict[str, Any]:
         "verdict": verdict,
         "ibridge": t1,
         "firmware": fw,
+        "esp": esp_mount(),
+        "firmware_backups": backups,
         "hid_interfaces": hid,
         "touchbar_controls_present": tb is not None,
         "touchbar_path": str(tb) if tb else None,
