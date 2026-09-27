@@ -22,8 +22,53 @@ sudo ./standalone/t1-touchbar.sh backup-firmware
 
 Then copy the result **off the disk**. This is the one thing on a T1 Mac that
 cannot be regenerated: the firmware is personalised to your chip's ECID, cannot
-be downloaded, and no other Mac's copy will work. If the ESP is ever wiped, only
-a macOS reinstall brings it back — 31 MB now versus that.
+be downloaded, and no other Mac's copy will work.
+
+### Why this is worth doing even though Apple is involved once
+
+It is easy to read "the T1 needs Apple" and conclude a backup is pointless. It
+is not, because **provisioning** and **booting** are different events:
+
+| | Needs Apple? | Needs your backup? |
+|---|---|---|
+| T1 boots at power-on | **No** | **No** — it reads the ESP |
+| ESP wiped by an installer | — | **Yes** — instant, offline |
+| Re-provision from scratch | **Yes** | slower alternative |
+
+Your Mac does not talk to Apple to boot. The chip reads
+`EFI/APPLE/EMBEDDEDOS/combined.memboot` off the ESP about **0.8 seconds** into
+power-on — before networking exists, before userspace. On a healthy machine you
+can watch it happen:
+
+```bash
+sudo dmesg | grep -m1 'Product: iBridge'      # ~0.77s into boot
+```
+
+Apple's servers were involved **once**, when macOS ran
+`EmbeddedOSInstallService` and asked to have a boot image signed for this chip's
+ECID. That produced the ~30 MB blob now sitting on your disk, and macOS has not
+been needed since. The blob is a self-contained, Apple-signed, machine-bound boot
+image — there is no per-boot validation and no account attached to it.
+
+So the backup replaces the *only* step that needs Apple. With it, a wiped ESP is
+a five-second file copy, offline. Without it, you go back to Apple — and only
+while Apple still signs this firmware. From t1-revive's own documentation:
+
+> If Apple stops signing this firmware, regeneration stops working for everyone,
+> macOS reinstalls included. That is the one permanent scenario, and the reason
+> an off-disk copy of `EFI/APPLE` is worth taking while the folder still exists.
+
+### The one thing a backup cannot cover
+
+A file copy restores the ESP; it does not re-flash the chip. Restoring works
+because the T1 re-reads those files at boot — which covers the case that actually
+happens, an installer wiping the partition. If the T1's own flash ever loses its
+data, no file copy helps and the restore protocol in
+[t1-revive](https://github.com/niconistal/t1-revive) is the only route. That one
+does need Apple's servers.
+
+31 MB now, covering the realistic failure offline and instantly, versus a macOS
+reinstall or an Apple-dependent recovery later.
 
 ## The whole toolkit
 
@@ -36,6 +81,7 @@ sudo ./t1-touchbar.sh restore-firmware
 ./t1-touchbar.sh build             # patch + compile the modules (no root)
 sudo ./t1-touchbar.sh install      # DKMS + boot load + handover
 sudo ./t1-touchbar.sh load         # manual load, for an already-installed system
+sudo ./resolve-dkms-conflict.sh    # stop two DKMS packages claiming the same modules
 ```
 
 `status` walks the layers in the order they must work — firmware → USB

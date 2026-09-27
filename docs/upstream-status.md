@@ -38,11 +38,18 @@ the three resulting files are staged to the ESP. Verified on MacBookPro13,2 /
 13,3 / 14,2 / 14,3.
 
 Caveats worth knowing: it needs a network path to Apple (`gs.apple.com`,
-`swcdn.apple.com`), it takes 4–5 minutes and talks to Apple's signing service, it
-can only work while Apple still signs this firmware, and it writes new factory
-data into the chip. An off-disk copy of `EFI/APPLE` is faster, offline, and does
-not depend on Apple's servers — which is the whole reason this repo's backup
-script exists.
+`swcdn.apple.com`), and it talks to Apple's signing service, so it can only work
+while Apple still signs this firmware. It also writes new factory data into the
+chip, and takes 4–5 minutes.
+
+**An off-disk copy of `EFI/APPLE` is a different kind of thing** — not a slower
+version of the same trick. Once provisioned, the chip boots straight off the ESP
+and never contacts Apple: it reads the blob about 0.8 s into power-on, before
+networking exists. Restoring a backup therefore covers the realistic failure
+(a wiped partition) with no network, no Apple, and no dependency on Apple's
+signing policy continuing. What it cannot do is re-flash a chip that has lost
+its own flash contents; that is the case t1-revive exists for, and the only one
+that genuinely needs Apple.
 
 **The installer.** #174 adds two hooks in `orchestrator/apple_efi.py`:
 `prepare_live` copies `EFI/APPLE` to RAM before `omarchy-iso-cleanup-disk`

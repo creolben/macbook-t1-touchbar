@@ -564,6 +564,26 @@ def do_restore_firmware(backup_dir: str | None = None, force: bool = False) -> d
     return result
 
 
+def backup_value_note(backups: list[dict[str, Any]]) -> str | None:
+    """Why the local copy matters, phrased against the common misconception.
+
+    The trap is reading "the T1 needs Apple" as "a backup is pointless". It is
+    not: provisioning (one-time, needs Apple) and booting (every power-on, needs
+    nothing) are different events, and the backup replaces only the first.
+    """
+    if not backups:
+        return None
+    if not any(b.get("complete") for b in backups):
+        return None
+    return (
+        "The backup covers the failure that actually happens without needing "
+        "Apple: the chip boots straight off the ESP (~0.8s into power-on, before "
+        "networking), so a wiped partition is a file copy, offline. Apple was "
+        "involved once, at provisioning. It cannot re-flash a chip that has lost "
+        "its own flash contents; that is the only case needing Apple."
+    )
+
+
 def _physical_disk(dev: str) -> str:
     """Resolve a device to the physical disk backing it.
 
@@ -755,6 +775,7 @@ def status_report() -> dict[str, Any]:
         "firmware": fw,
         "esp": esp_mount(),
         "firmware_backups": backups,
+        "backup_value": backup_value_note(backups),
         "legacy_stack": legacy,
         "hid_interfaces": hid,
         "touchbar_controls_present": tb is not None,
