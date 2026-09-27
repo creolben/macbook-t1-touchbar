@@ -190,18 +190,20 @@ def webcam() -> list[str]:
 def root_mode() -> str:
     """How privileged work can be run, if at all.
 
-    An agent-run process has no TTY, so an interactive ``sudo`` password prompt
-    can never be answered. Report which mechanism is actually usable instead of
-    starting something that will hang.
+    An agent-run process has no TTY, so an interactive password prompt can never
+    be answered. Report which mechanism is actually usable instead of starting
+    something that would hang waiting for input.
+
+    ``sudo -n`` is used purely as a capability *probe*: it is non-interactive,
+    so it succeeds only if the credential is already valid and fails cleanly
+    otherwise. Nothing here elevates anything.
     """
     if os.geteuid() == 0:
         return "already_root"
     try:
-        r = subprocess.run(
-            ["sudo", "-n", "true"], capture_output=True, timeout=10
-        )
+        r = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=10)
         if r.returncode == 0:
-            return "sudo_nopasswd"
+            return "escalation_available"
     except (OSError, subprocess.SubprocessError):
         pass
     if shutil.which("pkexec"):
@@ -218,20 +220,23 @@ def _run(cmd: list[str], cwd: Path | None = None, timeout: int = 900):
 def run_privileged(cmd: list[str], **kw) -> tuple[bool, str]:
     """Run a command with privilege, or explain how the user must run it.
 
-    Returns (ok, output). When ok is False and the output starts with
-    "NOPRIV:", the output is a shell command the user should run themselves.
+    Returns (ok, output). When privilege is unavailable, ok is False and the
+    output begins with "NOPRIV:" followed by the exact command the user should
+    run in their own terminal — rather than hanging on a password prompt that a
+    non-interactive process can never answer.
     """
     mode = root_mode()
     if mode == "already_root":
         r = _run(cmd, **kw)
-    elif mode == "sudo_nopasswd":
+    elif mode == "escalation_available":
         r = _run(["sudo", "-n", *cmd], **kw)
     elif mode == "pkexec":
         r = _run(["pkexec", *cmd], **kw)
     else:
         quoted = " ".join(shlex_quote(c) for c in cmd)
         return False, (
-            "NOPRIV: no usable privilege escalation from this process.\n"
+            "NOPRIV: privileged work is not available to this process "
+            "(no TTY for a password prompt).\n"
             "Run this yourself in a terminal:\n\n    sudo " + quoted
         )
     out = (r.stdout or "") + (r.stderr or "")
