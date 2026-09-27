@@ -63,8 +63,8 @@ only — indexed is not audited, so the install still prompts for consent.
 
 ## 3. Sharing a whole setup — the pack
 
-`hermes-pack.yaml` pins plugins to exact SHAs, like a modpack. Replace `<SHA>`
-after your first push:
+`hermes-pack.yaml` pins plugins to exact SHAs, like a modpack. It is already
+pinned to the current commit; update the pin when you publish a revision:
 
 ```yaml
 plugins:
@@ -118,7 +118,7 @@ After pushing, verify from a clean machine or a throwaway `HERMES_HOME`:
 
 ```bash
 # 1. installs and validates
-hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --ref <sha> --force
+hermes plugins install creolben/macbook-t1-touchbar#plugin-t1-touchbar --ref 73c0c778e5932d575e42c99ee1f27c5e54bb1cc4 --force
 hermes plugins doctor ~/.hermes/plugins/t1-touchbar
 
 # 2. registers all three tools
