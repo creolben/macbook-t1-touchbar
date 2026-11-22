@@ -1231,6 +1231,7 @@ static struct hid_driver appletb_hid_driver = {
 	.input_configured = appletb_input_configured,
 #ifdef CONFIG_PM
 	.suspend = appletb_suspend,
+	.resume = appletb_reset_resume,
 	.reset_resume = appletb_reset_resume,
 #endif
 };
